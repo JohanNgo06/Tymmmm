@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Trái Tim Tỏ Tình</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #000;
+            overflow: hidden; /* Chống cuộn trang */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            touch-action: none; /* Vô hiệu hóa thao tác zoom/cuộn mặc định trên điện thoại */
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        .message {
+            position: absolute;
+            z-index: 2;
+            color: #ff3366;
+            font-family: 'KaiTi', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            font-size: clamp(3rem, 8vw, 5rem); /* Tự động thu phóng chữ theo màn hình */
+            font-weight: bold;
+            text-shadow: 0 0 10px #ff3366, 0 0 20px #ff3366, 0 0 30px #ff3366;
+            pointer-events: none; /* Chuột/tay xuyên qua chữ để chạm vào hạt */
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.1); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="message">我爱你</div>
+    <canvas id="heartCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('heartCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let mouse = {
+            x: null,
+            y: null,
+            radius: 100 
+        };
+
+        // --- XỬ LÝ SỰ KIỆN CHUỘT (PC) ---
+        window.addEventListener('mousemove', (event) => {
+            mouse.x = event.x;
+            mouse.y = event.y;
+        });
+
+        window.addEventListener('mouseout', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // --- XỬ LÝ SỰ KIỆN CHẠM (ĐIỆN THOẠI) ---
+        window.addEventListener('touchstart', (event) => {
+            mouse.x = event.touches[0].clientX;
+            mouse.y = event.touches[0].clientY;
+        });
+
+        window.addEventListener('touchmove', (event) => {
+            event.preventDefault(); // Ngăn cuộn trang khi đang vuốt trái tim
+            mouse.x = event.touches[0].clientX;
+            mouse.y = event.touches[0].clientY;
+        }, { passive: false });
+
+        window.addEventListener('touchend', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        // Phương trình trái tim
+        const heartPosition = (t) => {
+            return {
+                x: 16 * Math.pow(Math.sin(t), 3),
+                y: -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t))
+            };
+        };
+
+        class Particle {
+            constructor(x, y, scale) {
+                this.x = x;
+                this.y = y;
+                this.originX = x;
+                this.originY = y;
+                this.size = Math.random() * 2 + 1.5;
+                this.speed = Math.random() * 0.05 + 0.02;
+                this.angle = Math.random() * Math.PI * 2;
+                
+                // Thuộc tính vật lý
+                this.vx = 0; 
+                this.vy = 0; 
+                this.friction = 0.85; 
+                this.ease = 0.05; 
+            }
+
+            update(pulseScale) {
+                this.angle += this.speed;
+                const dx = Math.cos(this.angle) * 5;
+                const dy = Math.sin(this.angle) * 5;
+                
+                const targetX = (this.originX * pulseScale) + dx;
+                const targetY = (this.originY * pulseScale) + dy;
+
+                // Lực đẩy từ chuột/ngón tay
+                if (mouse.x !== null && mouse.y !== null) {
+                    const mouseRelX = mouse.x - canvas.width / 2;
+                    const mouseRelY = mouse.y - canvas.height / 2;
+                    
+                    const distMouseX = this.x - mouseRelX;
+                    const distMouseY = this.y - mouseRelY;
+                    const distance = Math.sqrt(distMouseX * distMouseX + distMouseY * distMouseY);
+
+                    if (distance < mouse.radius) {
+                        const force = (mouse.radius - distance) / mouse.radius; 
+                        const pushFactor = 7; // Lực đẩy
+                        this.vx += (distMouseX / distance) * force * pushFactor;
+                        this.vy += (distMouseY / distance) * force * pushFactor;
+                    }
+                }
+
+                // Lực đàn hồi kéo về
+                this.vx += (targetX - this.x) * this.ease;
+                this.vy += (targetY - this.y) * this.ease;
+
+                // Ma sát
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+
+            draw() {
+                ctx.fillStyle = '#ea80b0'; // Màu hồng
+                ctx.beginPath();
+                ctx.arc(canvas.width / 2 + this.x, canvas.height / 2 + this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        let particles = [];
+        
+        // Hàm khởi tạo để tạo lại trái tim khi xoay dọc/ngang điện thoại
+        function init() {
+            particles = [];
+            const numParticles = 900; 
+            // Tự động thu nhỏ trái tim trên màn hình điện thoại
+            const scale = window.innerWidth < 768 ? 9 : 16; 
+
+            for (let i = 0; i < numParticles; i++) {
+                const t = Math.PI * 2 * Math.random();
+                const pos = heartPosition(t);
+                const spread = Math.random() * 0.5 + 0.5; 
+                particles.push(new Particle(pos.x * scale * spread, pos.y * scale * spread, scale));
+            }
+        }
+
+        let time = 0;
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            time += 0.05;
+            const pulseScale = 1 + Math.sin(time) * 0.08; 
+
+            particles.forEach(particle => {
+                particle.update(pulseScale);
+                particle.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Cập nhật lại kích thước canvas và vị trí hạt khi xoay màn hình
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            init(); // Vẽ lại trái tim cho cân giữa
+        });
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
